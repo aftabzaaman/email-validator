@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Validator | File Checker</title>
+    <!-- Load Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    <!-- Updated Font: Plus Jakarta Sans --><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom scrollbar for a sleek look */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            /* Scrollbar thumb uses the purple accent color */
+            background-color: #a855f7; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background-color: #1a202c; /* Darker tone */
+        }
+        body {
+            /* Updated font-family */
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            /* REVERTED: Original sleek blue/red gradient background from top-left to bottom-right */
+            background: linear-gradient(135deg, #3b82f6, #ef4444); /* Blue to Red */
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Style for the drag-over state - uses purple accent */
+        .dropzone-active {
+            /* Changed border color to Purple-500 */
+            border-color: #a855f7; 
+            background-color: #2d3748; /* Slightly lighter dark for active state */
+            /* Matching shadow, using Purple-500 hex */
+            box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.5); 
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body class="p-4">
+
+    <div id="app" class="w-full max-w-4xl bg-gray-800 shadow-2xl rounded-xl p-6 md:p-10 transition-all bg-opacity-90">
+        <!-- Header --><header class="mb-8 text-center">
+            <!-- UPDATED TITLE --><h1 class="text-3xl font-bold text-white mb-1">Aftab's Email Verification Tool</h1>
+            <p class="text-gray-300">Upload your files to begin the integrity check.</p>
+        </header>
+
+        <!-- Main Upload Component --><div id="drop-zone" class="border-4 border-dashed border-gray-600 rounded-lg p-12 text-center transition-colors duration-300 hover:border-purple-400 cursor-pointer"
+             ondragover="handleDragOver(event)"
+             ondragleave="handleDragLeave(event)"
+             ondrop="handleFileDrop(event)"
+             onclick="document.getElementById('file-input').click()">
+            
+            <!-- NEW Modern Icon (Upload Box) - Size w-12 h-12, White color --><svg class="w-12 h-12 mx-auto text-white mb-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+
+
+            <p class="text-xl font-semibold text-white mb-2">Drag & Drop Files Here</p>
+            <p class="text-gray-300 mb-4">or click to browse</p>
+            <p class="text-sm text-gray-400">Supported formats: CSV, XLSX, XLS (max 5MB per file)</p>
+            
+            <!-- Hidden File Input --><input type="file" id="file-input" accept=".csv, .xlsx, .xls, .txt" multiple class="hidden" onchange="handleFileSelect(event)">
+        </div>
+
+        <!-- File List Container --><div class="mt-8">
+            <h2 class="text-xl font-semibold text-white mb-4">Attached Files (<span id="file-count">0</span>)</h2>
+            <div id="file-list" class="space-y-3 max-h-60 overflow-y-auto pr-2">
+                <!-- File items will be inserted here --><p id="no-files-message" class="text-gray-500 text-sm">No files attached yet.</p>
+            </div>
+        </div>
+
+        <!-- Action Button and Status --><div class="mt-8 pt-6 border-t border-gray-700 flex flex-col sm:flex-row justify-between items-center">
+            <!-- Status text color changed to Purple-400 --><div id="status-message" class="text-purple-400 text-sm font-medium mb-4 sm:mb-0">
+                Ready for file upload.
+            </div>
+            <!-- Button colors changed to Purple-500/600 --><button id="process-button" 
+                    class="w-full sm:w-auto px-8 py-3 bg-purple-500 hover:bg-purple-600 text-white font-bold rounded-lg shadow-lg shadow-purple-500/30 transition duration-200 disabled:opacity-50 disabled:cursor-not-allowed" 
+                    disabled
+                    onclick="processRealFiles()">
+                Process Files
+            </button>
+        </div>
+        
+        <!-- Custom Modal for Notifications --><div id="notification-modal" class="fixed inset-0 z-50 hidden bg-black bg-opacity-70 flex items-center justify-center">
+            <div class="bg-gray-800 p-6 rounded-lg shadow-xl max-w-sm w-full border-t-4 border-purple-500">
+                <h3 id="modal-title" class="text-xl font-bold text-white mb-3">Notification</h3>
+                <p id="modal-content" class="text-gray-300 mb-6"></p>
+                <!-- Button colors changed to Purple-500/600 --><button onclick="closeModal()" class="w-full py-2 bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded-md transition">
+                    OK
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const MAX_FILE_SIZE_MB = 5;
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const fileListContainer = document.getElementById('file-list');
+        const fileCountElement = document.getElementById('file-count');
+        const noFilesMessage = document.getElementById('no-files-message');
+        const processButton = document.getElementById('process-button');
+        const statusMessage = document.getElementById('status-message');
+        
+        let attachedFiles = [];
+
+        // --- Utility Functions ---
+
+        const formatBytes = (bytes, decimals = 2) => {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        };
+
+        const showModal = (title, message) => {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-content').textContent = message;
+            document.getElementById('notification-modal').classList.remove('hidden');
+        };
+
+        const closeModal = () => {
+            document.getElementById('notification-modal').classList.add('hidden');
+        };
+
+        const isAllowedType = (file) => {
+            const allowedExtensions = ['.csv', '.xlsx', '.xls', '.txt'];
+            const fileName = file.name.toLowerCase();
+            return allowedExtensions.some(ext => fileName.endsWith(ext));
+        };
+
+        const updateUI = () => {
+            fileListContainer.innerHTML = '';
+            
+            if (attachedFiles.length === 0) {
+                noFilesMessage.classList.remove('hidden');
+                processButton.disabled = true;
+            } else {
+                noFilesMessage.classList.add('hidden');
+                processButton.disabled = false;
+            }
+
+            attachedFiles.forEach(file => {
+                const fileItem = createFileListItem(file);
+                fileListContainer.appendChild(fileItem);
+            });
+            
+            fileCountElement.textContent = attachedFiles.length;
+        };
+
+        const createFileListItem = (file) => {
+            const fileDiv = document.createElement('div');
+            fileDiv.id = `file-${file.id}`;
+            fileDiv.className = 'flex items-center justify-between p-3 bg-gray-700 rounded-lg shadow-md hover:bg-gray-600 transition duration-150';
+            
+            const fileIcon = `
+                <svg class="w-6 h-6 text-white mr-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>`;
+
+            fileDiv.innerHTML = `
+                <div class="flex items-center min-w-0">
+                    ${fileIcon}
+                    <div class="min-w-0">
+                        <p class="text-white font-medium truncate">${file.name}</p>
+                        <p class="text-xs text-gray-400">${formatBytes(file.size)}</p>
+                    </div>
+                </div>
+                <button 
+                    class="text-gray-400 hover:text-red-500 p-1 rounded-full transition" 
+                    onclick="removeFile('${file.id}')"
+                    title="Remove file">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            `;
+            return fileDiv;
+        };
+
+        const addFiles = (files) => {
+            const newFilesArray = Array.from(files);
+            
+            newFilesArray.forEach(file => {
+                if (!isAllowedType(file)) {
+                    showModal('File Type Error', `The file "${file.name}" is not a supported type (.csv, .xlsx, .xls, .txt).`);
+                    return;
+                }
+                if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+                    showModal('File Size Error', `The file "${file.name}" exceeds the maximum size of ${MAX_FILE_SIZE_MB}MB.`);
+                    return;
+                }
+                
+                file.id = crypto.randomUUID();
+                attachedFiles.push(file);
+            });
+            
+            updateUI();
+            statusMessage.textContent = `${newFilesArray.length} file(s) added.`;
+        };
+
+        const removeFile = (fileId) => {
+            attachedFiles = attachedFiles.filter(file => file.id !== fileId);
+            updateUI();
+            statusMessage.textContent = attachedFiles.length === 0 ? 'Ready for file upload.' : 'File removed.';
+        };
+
+        // --- Event Handlers ---
+        const handleDragOver = (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.add('dropzone-active'); };
+        const handleDragLeave = (e) => { e.preventDefault(); e.stopPropagation(); dropZone.classList.remove('dropzone-active'); };
+
+        const handleFileDrop = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('dropzone-active');
+            if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
+        };
+
+        const handleFileSelect = (e) => {
+            if (e.target.files.length > 0) addFiles(e.target.files);
+        };
+
+        // --- THIS IS THE NEW FUNCTION ---
+        const processRealFiles = async () => {
+            if (attachedFiles.length === 0) {
+                showModal('No Files', 'Please attach files to process.');
+                return;
+            }
+
+            statusMessage.textContent = 'Uploading and processing... Please wait.';
+            processButton.disabled = true;
+            processButton.innerHTML = 'Processing...';
+
+            const fileToProcess = attachedFiles[0]; 
+            const formData = new FormData();
+            formData.append('file', fileToProcess);
+
+            try {
+                const response = await fetch('/process-files', {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Server error');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                
+                const originalName = fileToProcess.name.split('.')[0];
+                a.download = `${originalName}_partial_results.csv`;
+                
+                document.body.appendChild(a);
+                a.click();
+                
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                showModal('Processing Complete', `Your results have been downloaded as ${a.download}`);
+                
+                attachedFiles = [];
+                updateUI();
+                statusMessage.textContent = 'Results downloaded. Ready for new files.';
+
+            } catch (error) {
+                console.error('Error processing file:', error);
+                showModal('Processing Error', `An error occurred: ${error.message}`);
+                statusMessage.textContent = 'An error occurred.';
+            } finally {
+                processButton.disabled = false;
+                processButton.innerHTML = 'Process Files';
+            }
+        };
+
+        // --- ALSO IMPORTANT ---
+        // Find the "Process Files" button in your HTML (it's above this script)
+        // Make sure its 'onclick' says "processRealFiles()"
+        // It should look like this:
+        // <button id="process-button" ... onclick="processRealFiles()">
+        
+        // Initial UI setup
+        document.addEventListener('DOMContentLoaded', () => {
+            updateUI();
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !document.getElementById('notification-modal').classList.contains('hidden')) {
+                    closeModal();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
